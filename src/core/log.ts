@@ -1,88 +1,42 @@
-module BP3D.Core {
+/** Enumeration of log contexts. */
+export enum ELogContext {
+  None,
+  All,
+  Interaction2d,
+  Item,
+  Wall,
+  Room,
+}
 
-  /** Enumeration of log contexts. */
-  export enum ELogContext {
-    /** Log nothing. */
-    None,
+/** Enumeration of log levels. */
+export enum ELogLevel {
+  Information,
+  Warning,
+  Error,
+}
 
-    /** Log all. */
-    All,
+/** Current log level (set to Warning to reduce noise). */
+export let currentLogLevel = ELogLevel.Warning;
 
-    /** 2D interaction */
-    Interaction2d,
+/** Current log context. */
+export let currentLogContext = ELogContext.None;
 
-    /** Interior items */
-    Item,
-
-    /** Wall (connectivity) */
-    Wall,
-
-    /** Room(s) */
-    Room
-  }
-
-  /** Enumeration of log levels. */
-  export enum ELogLevel {
-    /** An information. */
-    Information,
-
-    /** A warning. */
-    Warning,
-
-    /** An error. */
-    Error,
-
-    /** A fatal error. */
-    Fatal,
-
-    /** A debug message. */
-    Debug
-  }
-
-  /** The current log context. To be set when initializing the Application. */
-  export var logContext: ELogContext = ELogContext.None;
-
-  /** Pre-check if logging for specified context and/or level is enabled.
-   * This may be used to avoid compilation of complex logs.
-   * @param context The log context to be verified.
-   * @param level The log level to be verified.
-   * @returns If this context/levels is currently logged.
-   */
-  export function isLogging(context: ELogContext, level: ELogLevel) {
-    return logContext === ELogContext.All || logContext == context
-      || level === ELogLevel.Warning || level === ELogLevel.Error
-      || level === ELogLevel.Fatal
-  }
-
-  /** Log the passed message in the context and with given level.
-   * @param context The context in which the message should be logged.
-   * @param level The level of the message.
-   * @param message The messages to be logged. 
-   */
-  export function log(context: ELogContext, level: ELogLevel, message: string) {
-    if (isLogging(context, level) === false) {
-      return;
-    }
-
-    var tPrefix = "";
+/** Log a message. */
+export function log(
+  context: ELogContext,
+  level: ELogLevel,
+  message: string
+): void {
+  if (level >= currentLogLevel && (currentLogContext === ELogContext.All || context === currentLogContext)) {
     switch (level) {
-      case ELogLevel.Information:
-        tPrefix = "[INFO_] ";
+      case ELogLevel.Error:
+        console.error(`[BP3D] ${message}`);
         break;
       case ELogLevel.Warning:
-        tPrefix = "[WARNG] ";
+        console.warn(`[BP3D] ${message}`);
         break;
-      case ELogLevel.Error:
-        tPrefix = "[ERROR] ";
-        break;
-      case ELogLevel.Fatal:
-        tPrefix = "[FATAL] ";
-        break;
-      case ELogLevel.Debug:
-        tPrefix = "[DEBUG] ";
-        break;
+      default:
+        console.log(`[BP3D] ${message}`);
     }
-
-    console.log(tPrefix + message);
   }
 }

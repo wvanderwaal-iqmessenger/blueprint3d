@@ -1,18 +1,7 @@
-/**
-This file is a modified version of THREE.OrbitControls
-Contributors:
- * @author qiao / https://github.com/qiao
- * @author mrdoob / http://mrdoob.com
- * @author alteredq / http://alteredqualia.com/
- * @author WestLangley / http://github.com/WestLangley
- * @author erich666 / http://erichaines.com
- */
+import * as THREE from 'three';
+import { EventEmitter } from '../core/event-emitter';
 
-/// <reference path="../../lib/jQuery.d.ts" />
-/// <reference path="../../lib/three.d.ts" />
-
-module BP3D.Three {
-  export var Controls = function (object, domElement) {
+export const Controls = function (object, domElement) {
 
     this.object = object;
     this.domElement = (domElement !== undefined) ? domElement : document;
@@ -56,7 +45,7 @@ module BP3D.Three {
     // The four arrow keys
     this.keys = { LEFT: 37, UP: 38, RIGHT: 39, BOTTOM: 40 };
 
-    this.cameraMovedCallbacks = $.Callbacks();
+    this.cameraMovedCallbacks = new EventEmitter();
 
     this.needsUpdate = true;
 
@@ -515,4 +504,3 @@ module BP3D.Three {
 
     window.addEventListener('keydown', onKeyDown, false);
   };
-}

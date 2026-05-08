@@ -1,103 +1,59 @@
-/// <reference path="../../lib/three.d.ts" />
-/// <reference path="../core/utils.ts" />
+import * as THREE from 'three';
+import type { Room } from '../model/room';
 
-module BP3D.Three {
-  export var Floor = function (scene, room) {
+export class Floor {
+  private floorPlane: THREE.Mesh | null = null;
+  private textureLoader = new THREE.TextureLoader();
 
-    var scope = this;
+  constructor(private scene: THREE.Scene, public room: Room) {
+    room.fireOnFloorChange(() => this.redraw());
+    this.floorPlane = this.buildFloor();
+    this.addToScene();
+  }
 
-    this.room = room;
-    var scene = scene;
+  private redraw() {
+    this.removeFromScene();
+    this.floorPlane = this.buildFloor();
+    this.addToScene();
+  }
 
-    var floorPlane = null;
-    var roofPlane = null;
+  private buildFloor(): THREE.Mesh {
+    const textureSettings = this.room.getTexture();
+    const floorTexture = this.textureLoader.load(textureSettings.url);
+    floorTexture.wrapS = THREE.RepeatWrapping;
+    floorTexture.wrapT = THREE.RepeatWrapping;
+    floorTexture.repeat.set(1, 1);
 
-    init();
+    const floorMaterialTop = new THREE.MeshPhongMaterial({
+      map: floorTexture,
+      side: THREE.DoubleSide,
+      color: 0xcccccc,
+      specular: 0x0a0a0a,
+    });
 
-    function init() {
-      scope.room.fireOnFloorChange(redraw);
-      floorPlane = buildFloor();
-      // roofs look weird, so commented out
-      //roofPlane = buildRoof();
-    }
+    const textureScale = textureSettings.scale;
+    const points: THREE.Vector2[] = [];
+    this.room.interiorCorners.forEach(corner => {
+      points.push(new THREE.Vector2(corner.x / textureScale, corner.y / textureScale));
+    });
 
-    function redraw() {
-      scope.removeFromScene();
-      floorPlane = buildFloor();
-      scope.addToScene();
-    }
+    const shape = new THREE.Shape(points);
+    const geometry = new THREE.ShapeGeometry(shape);
+    const floor = new THREE.Mesh(geometry, floorMaterialTop);
+    floor.rotation.set(Math.PI / 2, 0, 0);
+    floor.scale.set(textureScale, textureScale, textureScale);
+    floor.receiveShadow = true;
+    floor.castShadow = false;
+    return floor;
+  }
 
-    function buildFloor() {
-      var textureSettings = scope.room.getTexture();
-      // setup texture
-      var floorTexture = THREE.ImageUtils.loadTexture(textureSettings.url);
-      floorTexture.wrapS = THREE.RepeatWrapping;
-      floorTexture.wrapT = THREE.RepeatWrapping;
-      floorTexture.repeat.set(1, 1);
-      var floorMaterialTop = new THREE.MeshPhongMaterial({
-        map: floorTexture,
-        side: THREE.DoubleSide,
-        // ambient: 0xffffff, TODO_Ekki
-        color: 0xcccccc,
-        specular: 0x0a0a0a
-      });
+  addToScene() {
+    if (this.floorPlane) this.scene.add(this.floorPlane);
+    if (this.room.floorPlane) this.scene.add(this.room.floorPlane);
+  }
 
-      var textureScale = textureSettings.scale;
-      // http://stackoverflow.com/questions/19182298/how-to-texture-a-three-js-mesh-created-with-shapegeometry
-      // scale down coords to fit 0 -> 1, then rescale
-
-      var points = [];
-      scope.room.interiorCorners.forEach((corner) => {
-        points.push(new THREE.Vector2(
-          corner.x / textureScale,
-          corner.y / textureScale));
-      });
-      var shape = new THREE.Shape(points);
-
-      var geometry = new THREE.ShapeGeometry(shape);
-
-      var floor = new THREE.Mesh(geometry, floorMaterialTop);
-
-      floor.rotation.set(Math.PI / 2, 0, 0);
-      floor.scale.set(textureScale, textureScale, textureScale);
-      floor.receiveShadow = true;
-      floor.castShadow = false;
-      return floor;
-    }
-
-    function buildRoof() {
-      // setup texture
-      var roofMaterial = new THREE.MeshBasicMaterial({
-        side: THREE.FrontSide,
-        color: 0xe5e5e5
-      });
-
-      var points = [];
-      scope.room.interiorCorners.forEach((corner) => {
-        points.push(new THREE.Vector2(
-          corner.x,
-          corner.y));
-      });
-      var shape = new THREE.Shape(points);
-      var geometry = new THREE.ShapeGeometry(shape);
-      var roof = new THREE.Mesh(geometry, roofMaterial);
-
-      roof.rotation.set(Math.PI / 2, 0, 0);
-      roof.position.y = 250;
-      return roof;
-    }
-
-    this.addToScene = function () {
-      scene.add(floorPlane);
-      //scene.add(roofPlane);
-      // hack so we can do intersect testing
-      scene.add(room.floorPlane);
-    }
-
-    this.removeFromScene = function () {
-      scene.remove(floorPlane);
-      //scene.remove(roofPlane);
-      scene.remove(room.floorPlane);
-    }
+  removeFromScene() {
+    if (this.floorPlane) this.scene.remove(this.floorPlane);
+    if (this.room.floorPlane) this.scene.remove(this.room.floorPlane);
   }
 }

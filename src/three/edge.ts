@@ -1,318 +1,275 @@
-/// <reference path="../../lib/jQuery.d.ts" />
-/// <reference path="../../lib/three.d.ts" />
-/// <reference path="../core/utils.ts" />
+import * as THREE from 'three';
+import { HalfEdge } from '../model/half_edge';
+import { Utils } from '../core/utils';
 
-module BP3D.Three {
-  export var Edge = function (scene, edge, controls) {
-    var scope = this;
-    var scene = scene;
-    var edge = edge;
-    var controls = controls;
-    var wall = edge.wall;
-    var front = edge.front;
+const lightMap = new THREE.TextureLoader().load('rooms/textures/walllightmap.png');
+const fillerColor = 0xdddddd;
+const sideColor = 0xcccccc;
+const baseColor = 0xdddddd;
 
-    var planes = [];
-    var basePlanes = []; // always visible
-    var texture = null;
+export class Edge {
+  public visible = false;
 
-    var lightMap = THREE.ImageUtils.loadTexture("rooms/textures/walllightmap.png");
-    var fillerColor = 0xdddddd;
-    var sideColor = 0xcccccc;
-    var baseColor = 0xdddddd;
+  private planes: THREE.Mesh[] = [];
+  private basePlanes: THREE.Mesh[] = [];
+  private texture: THREE.Texture | null = null;
 
-    this.visible = false;
+  private threeScene: THREE.Scene;
+  private edge: HalfEdge;
+  private controls: any;
+  private wall: any;
+  private front: boolean;
 
-    this.remove = function () {
-      edge.redrawCallbacks.remove(redraw);
-      controls.cameraMovedCallbacks.remove(updateVisibility);
-      removeFromScene();
+  // Bound references so remove() can unregister them
+  private boundRedraw = () => this.redraw();
+  private boundUpdateVisibility = () => this.updateVisibility();
+
+  constructor(scene: THREE.Scene, edge: HalfEdge, controls: any) {
+    this.threeScene = scene;
+    this.edge = edge;
+    this.controls = controls;
+    this.wall = edge.wall;
+    this.front = (edge as any).front;
+
+    this.init();
+  }
+
+  public remove() {
+    this.edge.redrawCallbacks.remove(this.boundRedraw);
+    this.controls.cameraMovedCallbacks.remove(this.boundUpdateVisibility);
+    this.removeFromScene();
+  }
+
+  private init() {
+    this.edge.redrawCallbacks.add(this.boundRedraw);
+    this.controls.cameraMovedCallbacks.add(this.boundUpdateVisibility);
+    this.updateTexture();
+    this.updatePlanes();
+    this.addToScene();
+  }
+
+  private redraw() {
+    this.removeFromScene();
+    this.updateTexture();
+    this.updatePlanes();
+    this.addToScene();
+  }
+
+  private removeFromScene() {
+    this.planes.forEach((plane) => this.threeScene.remove(plane));
+    this.basePlanes.forEach((plane) => this.threeScene.remove(plane));
+    this.planes = [];
+    this.basePlanes = [];
+  }
+
+  private addToScene() {
+    this.planes.forEach((plane) => this.threeScene.add(plane));
+    this.basePlanes.forEach((plane) => this.threeScene.add(plane));
+    this.updateVisibility();
+  }
+
+  private updateVisibility() {
+    const start = this.edge.interiorStart();
+    const end = this.edge.interiorEnd();
+    const x = end.x - start.x;
+    const y = end.y - start.y;
+    const normal = new THREE.Vector3(-y, 0, x).normalize();
+
+    const position = this.controls.object.position.clone();
+    const focus = new THREE.Vector3(
+      (start.x + end.x) / 2.0,
+      0,
+      (start.y + end.y) / 2.0
+    );
+    const direction = position.sub(focus).normalize();
+
+    const dot = normal.dot(direction);
+    this.visible = dot >= 0;
+
+    this.planes.forEach((plane) => { plane.visible = this.visible; });
+    this.updateObjectVisibility();
+  }
+
+  private updateObjectVisibility() {
+    this.wall.items.forEach((item: any) => {
+      item.updateEdgeVisibility(this.visible, this.front);
+    });
+    this.wall.onItems.forEach((item: any) => {
+      item.updateEdgeVisibility(this.visible, this.front);
+    });
+  }
+
+  private updateTexture(callback?: () => void) {
+    callback = callback || (() => { (this.threeScene as any).needsUpdate = true; });
+    const textureData = this.edge.getTexture();
+    const stretch = textureData.stretch;
+    const url = textureData.url;
+    const scale = textureData.scale;
+
+    this.texture = new THREE.TextureLoader().load(url, callback);
+    if (!stretch) {
+      const height = this.wall.height;
+      const width = this.edge.interiorDistance();
+      this.texture.wrapT = THREE.RepeatWrapping;
+      this.texture.wrapS = THREE.RepeatWrapping;
+      this.texture.repeat.set(width / scale, height / scale);
+      this.texture.needsUpdate = true;
     }
+  }
 
-    function init() {
-      edge.redrawCallbacks.add(redraw);
-      controls.cameraMovedCallbacks.add(updateVisibility);
-      updateTexture();
-      updatePlanes();
-      addToScene();
+  private updatePlanes() {
+    const wallMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.FrontSide,
+      map: this.texture!,
+    });
+
+    const fillerMaterial = new THREE.MeshBasicMaterial({
+      color: fillerColor,
+      side: THREE.DoubleSide,
+    });
+
+    this.planes.push(this.makeWall(
+      this.edge.exteriorStart(), this.edge.exteriorEnd(),
+      this.edge.exteriorTransform, this.edge.invExteriorTransform,
+      fillerMaterial
+    ));
+
+    this.planes.push(this.makeWall(
+      this.edge.interiorStart(), this.edge.interiorEnd(),
+      this.edge.interiorTransform, this.edge.invInteriorTransform,
+      wallMaterial
+    ));
+
+    this.basePlanes.push(this.buildFiller(this.edge, 0, THREE.BackSide, baseColor));
+    this.planes.push(this.buildFiller(this.edge, this.wall.height, THREE.DoubleSide, fillerColor));
+
+    this.planes.push(this.buildSideFiller(
+      this.edge.interiorStart(), this.edge.exteriorStart(), this.wall.height, sideColor
+    ));
+    this.planes.push(this.buildSideFiller(
+      this.edge.interiorEnd(), this.edge.exteriorEnd(), this.wall.height, sideColor
+    ));
+  }
+
+  private makeWall(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    transform: THREE.Matrix4,
+    invTransform: THREE.Matrix4,
+    material: THREE.Material
+  ): THREE.Mesh {
+    const v1 = this.toVec3(start);
+    const v2 = this.toVec3(end);
+    const v3 = v2.clone(); v3.y = this.wall.height;
+    const v4 = v1.clone(); v4.y = this.wall.height;
+
+    const points = [v1.clone(), v2.clone(), v3.clone(), v4.clone()];
+    points.forEach((p) => p.applyMatrix4(transform));
+
+    const shape = new THREE.Shape([
+      new THREE.Vector2(points[0].x, points[0].y),
+      new THREE.Vector2(points[1].x, points[1].y),
+      new THREE.Vector2(points[2].x, points[2].y),
+      new THREE.Vector2(points[3].x, points[3].y),
+    ]);
+
+    this.wall.items.forEach((item: any) => {
+      const pos = item.position.clone();
+      pos.applyMatrix4(transform);
+      const halfSize = item.halfSize;
+      const min = halfSize.clone().multiplyScalar(-1).add(pos);
+      const max = halfSize.clone().add(pos);
+
+      shape.holes.push(new THREE.Path([
+        new THREE.Vector2(min.x, min.y),
+        new THREE.Vector2(max.x, min.y),
+        new THREE.Vector2(max.x, max.y),
+        new THREE.Vector2(min.x, max.y),
+      ]));
+    });
+
+    const geometry = new THREE.ShapeGeometry(shape);
+
+    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < posAttr.count; i++) {
+      const vec = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+      vec.applyMatrix4(invTransform);
+      posAttr.setXYZ(i, vec.x, vec.y, vec.z);
     }
+    posAttr.needsUpdate = true;
 
-    function redraw() {
-      removeFromScene();
-      updateTexture();
-      updatePlanes();
-      addToScene();
+    const totalDistance = Utils.distance(v1.x, v1.z, v2.x, v2.z);
+    const height = this.wall.height;
+    const uvAttr = geometry.getAttribute('uv') as THREE.BufferAttribute;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const y = posAttr.getY(i);
+      const z = posAttr.getZ(i);
+      const u = Utils.distance(v1.x, v1.z, x, z) / totalDistance;
+      const v = y / height;
+      uvAttr.setXY(i, u, v);
     }
+    uvAttr.needsUpdate = true;
 
-    function removeFromScene() {
-      planes.forEach((plane) => {
-        scene.remove(plane);
-      });
-      basePlanes.forEach((plane) => {
-        scene.remove(plane);
-      });
-      planes = [];
-      basePlanes = [];
-    }
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, material);
+  }
 
-    function addToScene() {
-      planes.forEach((plane) => {
-        scene.add(plane);
-      });
-      basePlanes.forEach((plane) => {
-        scene.add(plane);
-      });
-      updateVisibility();
-    }
+  private buildSideFiller(
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    height: number,
+    color: number
+  ): THREE.Mesh {
+    const a = this.toVec3(p1);
+    const b = this.toVec3(p2);
+    const c = this.toVec3(p2, height);
+    const d = this.toVec3(p1, height);
 
-    function updateVisibility() {
-      // finds the normal from the specified edge
-      var start = edge.interiorStart();
-      var end = edge.interiorEnd();
-      var x = end.x - start.x;
-      var y = end.y - start.y;
-      // rotate 90 degrees CCW
-      var normal = new THREE.Vector3(-y, 0, x);
-      normal.normalize();
+    const positions = new Float32Array([
+      a.x, a.y, a.z,
+      b.x, b.y, b.z,
+      c.x, c.y, c.z,
+      a.x, a.y, a.z,
+      c.x, c.y, c.z,
+      d.x, d.y, d.z,
+    ]);
 
-      // setup camera
-      var position = controls.object.position.clone();
-      var focus = new THREE.Vector3(
-        (start.x + end.x) / 2.0,
-        0,
-        (start.y + end.y) / 2.0);
-      var direction = position.sub(focus).normalize();
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
 
-      // find dot
-      var dot = normal.dot(direction);
+    return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  }
 
-      // update visible
-      scope.visible = (dot >= 0);
+  private buildFiller(
+    edge: HalfEdge,
+    height: number,
+    side: THREE.Side,
+    color: number
+  ): THREE.Mesh {
+    const points = [
+      this.toVec2(edge.exteriorStart()),
+      this.toVec2(edge.exteriorEnd()),
+      this.toVec2(edge.interiorEnd()),
+      this.toVec2(edge.interiorStart()),
+    ];
 
-      // show or hide plans
-      planes.forEach((plane) => {
-        plane.visible = scope.visible;
-      });
+    const shape = new THREE.Shape(points);
+    const geometry = new THREE.ShapeGeometry(shape);
+    const filler = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side }));
+    filler.rotation.set(Math.PI / 2, 0, 0);
+    filler.position.y = height;
+    return filler;
+  }
 
-      updateObjectVisibility();
-    }
+  private toVec2(pos: { x: number; y: number }): THREE.Vector2 {
+    return new THREE.Vector2(pos.x, pos.y);
+  }
 
-    function updateObjectVisibility() {
-      wall.items.forEach((item) => {
-        item.updateEdgeVisibility(scope.visible, front);
-      });
-      wall.onItems.forEach((item) => {
-        item.updateEdgeVisibility(scope.visible, front);
-      });
-    }
-
-    function updateTexture(callback?) {
-      // callback is fired when texture loads
-      callback = callback || function () {
-        scene.needsUpdate = true;
-      }
-      var textureData = edge.getTexture();
-      var stretch = textureData.stretch;
-      var url = textureData.url;
-      var scale = textureData.scale;
-      texture = THREE.ImageUtils.loadTexture(url, null, callback);
-      if (!stretch) {
-        var height = wall.height;
-        var width = edge.interiorDistance();
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.repeat.set(width / scale, height / scale);
-        texture.needsUpdate = true;
-      }
-    }
-
-    function updatePlanes() {
-      var wallMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        // ambientColor: 0xffffff, TODO_Ekki
-        //ambient: scope.wall.color,
-        side: THREE.FrontSide,
-        map: texture,
-        // lightMap: lightMap TODO_Ekki
-      });
-
-      var fillerMaterial = new THREE.MeshBasicMaterial({
-        color: fillerColor,
-        side: THREE.DoubleSide
-      });
-
-      // exterior plane
-      planes.push(makeWall(
-        edge.exteriorStart(),
-        edge.exteriorEnd(),
-        edge.exteriorTransform,
-        edge.invExteriorTransform,
-        fillerMaterial));
-
-      // interior plane
-      planes.push(makeWall(
-        edge.interiorStart(),
-        edge.interiorEnd(),
-        edge.interiorTransform,
-        edge.invInteriorTransform,
-        wallMaterial));
-
-      // bottom
-      // put into basePlanes since this is always visible
-      basePlanes.push(buildFiller(
-        edge, 0,
-        THREE.BackSide, baseColor));
-
-      // top
-      planes.push(buildFiller(
-        edge, wall.height,
-        THREE.DoubleSide, fillerColor));
-
-      // sides
-      planes.push(buildSideFillter(
-        edge.interiorStart(), edge.exteriorStart(),
-        wall.height, sideColor));
-
-      planes.push(buildSideFillter(
-        edge.interiorEnd(), edge.exteriorEnd(),
-        wall.height, sideColor));
-    }
-
-    // start, end have x and y attributes (i.e. corners)
-    function makeWall(start, end, transform, invTransform, material) {
-      var v1 = toVec3(start);
-      var v2 = toVec3(end);
-      var v3 = v2.clone();
-      v3.y = wall.height;
-      var v4 = v1.clone();
-      v4.y = wall.height;
-
-      var points = [v1.clone(), v2.clone(), v3.clone(), v4.clone()];
-
-      points.forEach((p) => {
-        p.applyMatrix4(transform);
-      });
-
-      var shape = new THREE.Shape([
-        new THREE.Vector2(points[0].x, points[0].y),
-        new THREE.Vector2(points[1].x, points[1].y),
-        new THREE.Vector2(points[2].x, points[2].y),
-        new THREE.Vector2(points[3].x, points[3].y)
-      ]);
-
-      // add holes for each wall item
-      wall.items.forEach((item) => {
-        var pos = item.position.clone();
-        pos.applyMatrix4(transform)
-        var halfSize = item.halfSize;
-        var min = halfSize.clone().multiplyScalar(-1);
-        var max = halfSize.clone();
-        min.add(pos);
-        max.add(pos);
-
-        var holePoints = [
-          new THREE.Vector2(min.x, min.y),
-          new THREE.Vector2(max.x, min.y),
-          new THREE.Vector2(max.x, max.y),
-          new THREE.Vector2(min.x, max.y)
-        ];
-
-        shape.holes.push(new THREE.Path(holePoints));
-      });
-
-      var geometry = new THREE.ShapeGeometry(shape);
-
-      geometry.vertices.forEach((v) => {
-        v.applyMatrix4(invTransform);
-      });
-
-      // make UVs
-      var totalDistance = Core.Utils.distance(v1.x, v1.z, v2.x, v2.z);
-      var height = wall.height;
-      geometry.faceVertexUvs[0] = [];
-
-      function vertexToUv(vertex) {
-        var x = Core.Utils.distance(v1.x, v1.z, vertex.x, vertex.z) / totalDistance;
-        var y = vertex.y / height;
-        return new THREE.Vector2(x, y);
-      }
-
-      geometry.faces.forEach((face) => {
-        var vertA = geometry.vertices[face.a];
-        var vertB = geometry.vertices[face.b];
-        var vertC = geometry.vertices[face.c];
-        geometry.faceVertexUvs[0].push([
-          vertexToUv(vertA),
-          vertexToUv(vertB),
-          vertexToUv(vertC)]);
-      });
-
-      geometry.faceVertexUvs[1] = geometry.faceVertexUvs[0];
-
-      geometry.computeFaceNormals();
-      geometry.computeVertexNormals();
-
-      var mesh = new THREE.Mesh(
-        geometry,
-        material);
-
-      return mesh;
-    }
-
-    function buildSideFillter(p1, p2, height, color) {
-      var points = [
-        toVec3(p1),
-        toVec3(p2),
-        toVec3(p2, height),
-        toVec3(p1, height)
-      ];
-
-      var geometry = new THREE.Geometry();
-      points.forEach((p) => {
-        geometry.vertices.push(p);
-      });
-      geometry.faces.push(new THREE.Face3(0, 1, 2));
-      geometry.faces.push(new THREE.Face3(0, 2, 3));
-
-      var fillerMaterial = new THREE.MeshBasicMaterial({
-        color: color,
-        side: THREE.DoubleSide
-      });
-
-      var filler = new THREE.Mesh(geometry, fillerMaterial);
-      return filler;
-    }
-
-    function buildFiller(edge, height, side, color) {
-      var points = [
-        toVec2(edge.exteriorStart()),
-        toVec2(edge.exteriorEnd()),
-        toVec2(edge.interiorEnd()),
-        toVec2(edge.interiorStart())
-      ];
-
-      var fillerMaterial = new THREE.MeshBasicMaterial({
-        color: color,
-        side: side
-      });
-
-      var shape = new THREE.Shape(points);
-      var geometry = new THREE.ShapeGeometry(shape);
-
-      var filler = new THREE.Mesh(geometry, fillerMaterial);
-      filler.rotation.set(Math.PI / 2, 0, 0);
-      filler.position.y = height;
-      return filler;
-    }
-
-    function toVec2(pos) {
-      return new THREE.Vector2(pos.x, pos.y);
-    }
-
-    function toVec3(pos, height?) {
-      height = height || 0;
-      return new THREE.Vector3(pos.x, height, pos.y);
-    }
-
-    init();
+  private toVec3(pos: { x: number; y: number }, height = 0): THREE.Vector3 {
+    return new THREE.Vector3(pos.x, height, pos.y);
   }
 }

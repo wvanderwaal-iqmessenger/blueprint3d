@@ -1,46 +1,34 @@
-/// <reference path="../../lib/three.d.ts" />
-/// <reference path="floor.ts" />
-/// <reference path="edge.ts" />
+import * as THREE from 'three';
+import { Floor } from './floor';
+import { Edge } from './edge';
 
-module BP3D.Three {
-  export var Floorplan = function (scene, floorplan, controls) {
+export class ThreeFloorplan {
+  public floors: Floor[] = [];
+  public edges: Edge[] = [];
 
-    var scope = this;
+  constructor(
+    private scene: THREE.Scene,
+    public floorplan: any,
+    private controls: any
+  ) {
+    floorplan.fireOnUpdatedRooms(() => this.redraw());
+  }
 
-    this.scene = scene;
-    this.floorplan = floorplan;
-    this.controls = controls;
-
+  private redraw() {
+    this.floors.forEach((floor) => floor.removeFromScene());
+    this.edges.forEach((edge) => edge.remove());
     this.floors = [];
     this.edges = [];
 
-    floorplan.fireOnUpdatedRooms(redraw);
+    this.floorplan.getRooms().forEach((room: any) => {
+      const threeFloor = new Floor(this.scene, room);
+      this.floors.push(threeFloor);
+      threeFloor.addToScene();
+    });
 
-    function redraw() {
-      // clear scene
-      scope.floors.forEach((floor) => {
-        floor.removeFromScene();
-      });
-
-      scope.edges.forEach((edge) => {
-        edge.remove();
-      });
-      scope.floors = [];
-      scope.edges = [];
-
-      // draw floors
-     scope.floorplan.getRooms().forEach((room) => {
-        var threeFloor = new Three.Floor(scene, room);
-        scope.floors.push(threeFloor);
-        threeFloor.addToScene();
-      });
-
-      // draw edges
-      scope.floorplan.wallEdges().forEach((edge) => {
-        var threeEdge = new Three.Edge(
-          scene, edge, scope.controls);
-        scope.edges.push(threeEdge);
-      });
-    }
+    this.floorplan.wallEdges().forEach((edge: any) => {
+      const threeEdge = new Edge(this.scene, edge, this.controls);
+      this.edges.push(threeEdge);
+    });
   }
 }

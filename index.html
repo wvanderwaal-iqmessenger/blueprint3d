@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blueprint 3D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+
+  <body class="text-white">
+    <!-- =========================================================
+         Full-bleed surfaces (3D viewer, 2D floorplanner, item shop)
+         ========================================================= -->
+    <div id="viewer"></div>
+
+    <div id="floorplanner">
+      <canvas id="floorplanner-canvas" class="w-full h-full block"></canvas>
+
+      <!-- Floorplanner mode toolbar (floating pill, top center) -->
+      <div
+        id="floorplanner-controls"
+        class="absolute top-24 left-1/2 -translate-x-1/2 glass-pill rounded-full px-2 py-2 flex items-center gap-1 z-20"
+      >
+        <button
+          id="move"
+          class="btn glass-button rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-white/20"
+        >
+          <i class="bi bi-arrows-move"></i>
+          <span>Move</span>
+        </button>
+        <button
+          id="draw"
+          class="btn glass-button rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-white/20"
+        >
+          <i class="bi bi-pencil"></i>
+          <span>Draw</span>
+        </button>
+        <button
+          id="delete"
+          class="btn glass-button rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-white/20"
+        >
+          <i class="bi bi-x-lg"></i>
+          <span>Delete</span>
+        </button>
+        <div class="w-px h-6 bg-white/20 mx-2"></div>
+        <button
+          id="update-floorplan"
+          class="btn rounded-full px-5 py-2 text-sm font-medium text-white"
+          style="
+            background: var(--color-accent);
+            box-shadow: 0 8px 22px -6px var(--color-accent-soft);
+          "
+        >
+          Done &raquo;
+        </button>
+      </div>
+
+      <div
+        id="draw-walls-hint"
+        class="absolute left-1/2 -translate-x-1/2 bottom-8 glass-pill rounded-full px-4 py-2 text-sm z-20"
+        style="display: none;"
+      >
+        Press
+        <kbd class="px-1.5 py-0.5 rounded bg-white/15 border border-white/20 text-xs">Esc</kbd>
+        to stop drawing walls
+      </div>
+    </div>
+
+    <!-- "Add items" shop overlay -->
+    <div id="add-items" class="scroll-glass">
+      <div class="max-w-6xl mx-auto">
+        <h2 class="text-3xl font-semibold tracking-tight mb-1">Add furniture</h2>
+        <p class="text-white/60 mb-8">Click a piece to drop it into the scene.</p>
+        <div
+          id="items-wrapper"
+          class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+        >
+          <!-- Items injected by items.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         Floating glass overlays
+         ========================================================= -->
+
+    <!-- Top center: section tabs (floorplan / design / items) -->
+    <nav
+      class="fixed top-6 left-1/2 -translate-x-1/2 z-30 glass-pill rounded-full p-1.5 flex items-center gap-1"
+    >
+      <ul class="nav-sidebar flex items-center gap-1 m-0 p-0 list-none">
+        <li id="floorplan_tab">
+          <a
+            href="#"
+            class="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition"
+          >
+            <i class="bi bi-grid-1x2"></i>
+            <span>Floorplan</span>
+          </a>
+        </li>
+        <li id="design_tab">
+          <a
+            href="#"
+            class="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition"
+          >
+            <i class="bi bi-house-door"></i>
+            <span>Design</span>
+          </a>
+        </li>
+        <li id="items_tab">
+          <a
+            href="#"
+            class="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition"
+          >
+            <i class="bi bi-bag-plus"></i>
+            <span>Add Items</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Top left: file controls -->
+    <div
+      id="main-controls"
+      class="fixed top-6 left-6 z-30 glass-pill rounded-full p-1.5 flex items-center gap-1"
+    >
+      <a
+        href="#"
+        id="new"
+        class="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-plus-lg"></i>
+        <span>New</span>
+      </a>
+      <a
+        href="#"
+        id="saveFile"
+        class="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-download"></i>
+        <span>Save</span>
+      </a>
+      <label
+        class="btn-file flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/85 hover:bg-white/15 transition cursor-pointer"
+      >
+        <i class="bi bi-upload"></i>
+        <span>Load</span>
+        <input type="file" id="loadFile" />
+      </label>
+    </div>
+
+    <!-- Left: sidebar (context menu + textures) -->
+    <aside
+      class="sidebar fixed top-24 left-6 bottom-6 w-80 z-20 glass-panel rounded-3xl p-5 overflow-y-auto scroll-glass"
+    >
+      <div class="space-y-5">
+        <header>
+          <p class="text-xs uppercase tracking-[0.18em] text-white/50">Blueprint 3D</p>
+          <h1 class="text-2xl font-semibold tracking-tight leading-tight mt-1">
+            Design your<br />living space
+          </h1>
+        </header>
+
+        <!-- Context menu for selected item -->
+        <div id="context-menu" style="display: none;">
+          <div class="space-y-4">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-white/50">Selected</p>
+              <span id="context-menu-name" class="text-lg font-medium leading-tight"></span>
+            </div>
+
+            <button
+              id="context-menu-delete"
+              class="w-full rounded-2xl px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition"
+              style="background: oklch(60% 0.2 20 / 0.85); color: white;"
+            >
+              <i class="bi bi-trash"></i>
+              Delete item
+            </button>
+
+            <div class="rounded-2xl p-4 bg-white/5 border border-white/10">
+              <p class="text-xs uppercase tracking-wider text-white/50 mb-3">Adjust size</p>
+              <div class="space-y-2.5">
+                <div class="flex items-center gap-3">
+                  <label class="w-16 text-sm text-white/70">Width</label>
+                  <input type="number" id="item-width" class="glass-input" />
+                </div>
+                <div class="flex items-center gap-3">
+                  <label class="w-16 text-sm text-white/70">Depth</label>
+                  <input type="number" id="item-depth" class="glass-input" />
+                </div>
+                <div class="flex items-center gap-3">
+                  <label class="w-16 text-sm text-white/70">Height</label>
+                  <input type="number" id="item-height" class="glass-input" />
+                </div>
+              </div>
+              <p class="text-xs text-white/40 mt-3">Measurements in inches.</p>
+            </div>
+
+            <label class="flex items-center gap-2 text-sm text-white/80 select-none cursor-pointer">
+              <input type="checkbox" id="fixed" class="accent-violet-400 w-4 h-4" />
+              Lock in place
+            </label>
+          </div>
+        </div>
+
+        <!-- Floor textures -->
+        <div id="floorTexturesDiv" style="display: none;">
+          <div class="rounded-2xl p-4 bg-white/5 border border-white/10">
+            <p class="text-xs uppercase tracking-wider text-white/50 mb-3">Floor texture</p>
+            <div class="grid grid-cols-2 gap-2">
+              <a
+                href="#"
+                class="texture-select-thumbnail"
+                texture-url="rooms/textures/light_fine_wood.jpg"
+                texture-stretch="false"
+                texture-scale="300"
+              >
+                <img alt="Light fine wood" src="rooms/thumbnails/thumbnail_light_fine_wood.jpg" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wall textures -->
+        <div id="wallTextures" style="display: none;">
+          <div class="rounded-2xl p-4 bg-white/5 border border-white/10">
+            <p class="text-xs uppercase tracking-wider text-white/50 mb-3">Wall texture</p>
+            <div class="grid grid-cols-2 gap-2">
+              <a
+                href="#"
+                class="texture-select-thumbnail"
+                texture-url="rooms/textures/marbletiles.jpg"
+                texture-stretch="false"
+                texture-scale="300"
+              >
+                <img alt="Marble tiles" src="rooms/thumbnails/thumbnail_marbletiles.jpg" />
+              </a>
+              <a
+                href="#"
+                class="texture-select-thumbnail"
+                texture-url="rooms/textures/wallmap_yellow.png"
+                texture-stretch="true"
+                texture-scale=""
+              >
+                <img alt="Yellow wall" src="rooms/thumbnails/thumbnail_wallmap_yellow.png" />
+              </a>
+              <a
+                href="#"
+                class="texture-select-thumbnail"
+                texture-url="rooms/textures/light_brick.jpg"
+                texture-stretch="false"
+                texture-scale="100"
+              >
+                <img alt="Light brick" src="rooms/thumbnails/thumbnail_light_brick.jpg" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Default hint -->
+        <div id="sidebar-hint" class="text-sm text-white/55 leading-relaxed">
+          <p>
+            Click <span class="font-medium text-white">an item</span> in the scene to edit it,
+            or click a <span class="font-medium text-white">wall</span> or the
+            <span class="font-medium text-white">floor</span> to change its texture.
+          </p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom right: camera controls -->
+    <div
+      id="camera-controls"
+      class="fixed bottom-6 right-6 z-30 glass-pill rounded-full p-1.5 flex items-center gap-1"
+    >
+      <a
+        href="#"
+        id="zoom-out"
+        class="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-zoom-out"></i>
+      </a>
+      <a
+        href="#"
+        id="reset-view"
+        class="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-house"></i>
+      </a>
+      <a
+        href="#"
+        id="zoom-in"
+        class="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-zoom-in"></i>
+      </a>
+
+      <div class="w-px h-6 bg-white/20 mx-2"></div>
+
+      <a
+        href="#"
+        id="move-left"
+        class="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <span class="flex flex-col">
+        <a
+          href="#"
+          id="move-up"
+          class="w-10 h-5 rounded-t-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+        >
+          <i class="bi bi-arrow-up text-xs"></i>
+        </a>
+        <a
+          href="#"
+          id="move-down"
+          class="w-10 h-5 rounded-b-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+        >
+          <i class="bi bi-arrow-down text-xs"></i>
+        </a>
+      </span>
+      <a
+        href="#"
+        id="move-right"
+        class="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:bg-white/15 transition"
+      >
+        <i class="bi bi-arrow-right"></i>
+      </a>
+    </div>
+
+    <!-- Loading modal -->
+    <div id="loading-modal">
+      <div class="glass-panel rounded-3xl px-10 py-8 flex flex-col items-center gap-4">
+        <div class="w-10 h-10 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
+        <h1 class="text-xl">Loading…</h1>
+      </div>
+    </div>
+
+    <script src="js/jquery.js" defer></script>
+    <script src="js/items.js" defer></script>
+    <script src="js/example.js" defer></script>
+  </body>
+</html>

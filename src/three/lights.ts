@@ -1,72 +1,49 @@
-/// <reference path="../../lib/three.d.ts" />
+import * as THREE from 'three';
+import type { Floorplan } from '../model/floorplan';
 
-module BP3D.Three {
-  export var Lights = function (scene, floorplan) {
+export class Lights {
+  private dirLight: THREE.DirectionalLight;
 
-    var scope = this;
-    var scene = scene;
-    var floorplan = floorplan;
+  constructor(scene: THREE.Scene, floorplan: Floorplan) {
+    const height = 300;
+    const tol = 1;
 
-    var tol = 1;
-    var height = 300; // TODO: share with Blueprint.Wall
+    const light = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1);
+    light.position.set(0, height, 0);
+    scene.add(light);
 
-    var dirLight;
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 0);
+    this.dirLight.color.setHSL(1, 1, 0.1);
+    this.dirLight.castShadow = true;
 
-    this.getDirLight = function () {
-      return dirLight;
-    }
+    // Modern Three.js shadow properties
+    this.dirLight.shadow.mapSize.width = 1024;
+    this.dirLight.shadow.mapSize.height = 1024;
+    this.dirLight.shadow.camera.far = height + tol;
+    this.dirLight.shadow.bias = -0.0001;
+    this.dirLight.visible = true;
 
-    function init() {
-      var light = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1);
-      light.position.set(0, height, 0);
-      scene.add(light);
+    scene.add(this.dirLight);
+    scene.add(this.dirLight.target);
 
-      dirLight = new THREE.DirectionalLight(0xffffff, 0);
-      dirLight.color.setHSL(1, 1, 0.1);
+    floorplan.fireOnUpdatedRooms(() => this.updateShadowCamera(floorplan, height, tol));
+  }
 
-      dirLight.castShadow = true;
+  getDirLight() { return this.dirLight; }
 
-      dirLight.shadowMapWidth = 1024;
-      dirLight.shadowMapHeight = 1024;
+  private updateShadowCamera(floorplan: Floorplan, height: number, tol: number) {
+    const size = floorplan.getSize();
+    const d = (Math.max(size.z, size.x) + tol) / 2.0;
+    const center = floorplan.getCenter();
 
-      dirLight.shadowCameraFar = height + tol;
-      dirLight.shadowBias = -0.0001;
-      dirLight.shadowDarkness = 0.2;
-      dirLight.visible = true;
-      dirLight.shadowCameraVisible = false;
+    this.dirLight.position.set(center.x, height, center.z);
+    this.dirLight.target.position.copy(center);
 
-      scene.add(dirLight);
-      scene.add(dirLight.target);
-
-      floorplan.fireOnUpdatedRooms(updateShadowCamera);
-    }
-
-    function updateShadowCamera() {
-
-      var size = floorplan.getSize();
-      var d = (Math.max(size.z, size.x) + tol) / 2.0;
-
-      var center = floorplan.getCenter();
-      var pos = new THREE.Vector3(
-        center.x, height, center.z);
-      dirLight.position.copy(pos);
-      dirLight.target.position.copy(center);
-      //dirLight.updateMatrix();
-      //dirLight.updateWorldMatrix()
-      dirLight.shadowCameraLeft = -d;
-      dirLight.shadowCameraRight = d;
-      dirLight.shadowCameraTop = d;
-      dirLight.shadowCameraBottom = -d;
-      // this is necessary for updates
-      if (dirLight.shadowCamera) {
-        dirLight.shadowCamera.left = dirLight.shadowCameraLeft;
-        dirLight.shadowCamera.right = dirLight.shadowCameraRight;
-        dirLight.shadowCamera.top = dirLight.shadowCameraTop;
-        dirLight.shadowCamera.bottom = dirLight.shadowCameraBottom;
-        dirLight.shadowCamera.updateProjectionMatrix();
-      }
-    }
-
-    init();
+    const shadowCam = this.dirLight.shadow.camera as THREE.OrthographicCamera;
+    shadowCam.left = -d;
+    shadowCam.right = d;
+    shadowCam.top = d;
+    shadowCam.bottom = -d;
+    shadowCam.updateProjectionMatrix();
   }
 }
