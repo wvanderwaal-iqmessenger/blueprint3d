@@ -66,9 +66,73 @@
         class="absolute left-1/2 -translate-x-1/2 bottom-8 glass-pill rounded-full px-4 py-2 text-sm z-20"
         style="display: none;"
       >
-        Press
-        <kbd class="px-1.5 py-0.5 rounded bg-white/15 border border-white/20 text-xs">Esc</kbd>
-        to stop drawing walls
+        Click to drop a corner • <kbd class="px-1.5 py-0.5 rounded bg-white/15 border border-white/20 text-xs">Shift</kbd> to lock 15° • <kbd class="px-1.5 py-0.5 rounded bg-white/15 border border-white/20 text-xs">Esc</kbd> to finish
+      </div>
+
+      <!-- Drawing assist HUD (visible only while a polyline is in progress) -->
+      <div
+        id="draw-hud"
+        class="absolute right-6 top-24 z-20 w-72 glass-panel rounded-2xl p-4 space-y-3"
+        style="display: none;"
+      >
+        <div>
+          <p class="text-xs uppercase tracking-wider text-white/50 mb-2">Next wall</p>
+          <div class="flex items-center gap-2">
+            <label class="w-12 text-xs text-white/60">Length</label>
+            <input
+              id="draw-length-input"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              placeholder="e.g. 4.5 m"
+              class="glass-input flex-1"
+            />
+          </div>
+          <div class="flex items-center gap-2 mt-2">
+            <label class="w-12 text-xs text-white/60">Angle</label>
+            <input
+              id="draw-angle-input"
+              type="number"
+              step="1"
+              autocomplete="off"
+              placeholder="0–360°"
+              class="glass-input flex-1"
+            />
+            <span class="text-white/50 text-xs">°</span>
+          </div>
+          <div class="flex items-center justify-between mt-3">
+            <span class="text-xs text-white/50">Live: <span id="draw-live-readout" class="text-white/80">—</span></span>
+            <button
+              id="draw-place-btn"
+              class="text-xs rounded-full px-3 py-1.5 font-medium text-white"
+              style="background: var(--color-accent); box-shadow: 0 6px 14px -6px var(--color-accent-soft);"
+            >
+              Place ⏎
+            </button>
+          </div>
+        </div>
+
+        <div class="h-px bg-white/10"></div>
+
+        <div class="space-y-2">
+          <label class="flex items-center justify-between text-xs">
+            <span class="text-white/70">Snap to grid</span>
+            <input id="snap-grid-toggle" type="checkbox" class="accent-violet-400 w-4 h-4" checked />
+          </label>
+          <label class="flex items-center justify-between text-xs">
+            <span class="text-white/70">Snap angle (15°)</span>
+            <input id="snap-angle-toggle" type="checkbox" class="accent-violet-400 w-4 h-4" />
+          </label>
+          <div class="flex items-center justify-between text-xs gap-2">
+            <span class="text-white/70 whitespace-nowrap">Grid size</span>
+            <select id="grid-size-select" class="glass-input flex-1 py-1 text-xs">
+              <option value="10">10 cm / ~4"</option>
+              <option value="25" selected>25 cm / ~10"</option>
+              <option value="50">50 cm / ~1'8"</option>
+              <option value="100">1 m / ~3'3"</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -157,15 +221,35 @@
 
     <!-- Left: sidebar (context menu + textures) -->
     <aside
-      class="sidebar fixed top-24 left-6 bottom-6 w-80 z-20 glass-panel rounded-3xl p-5 overflow-y-auto scroll-glass"
+      class="sidebar fixed top-24 left-6 bottom-6 w-80 z-20 glass-panel rounded-3xl flex flex-col overflow-hidden"
     >
-      <div class="space-y-5">
+      <div class="flex-1 overflow-y-auto scroll-glass p-5 space-y-5">
         <header>
           <p class="text-xs uppercase tracking-[0.18em] text-white/50">Blueprint 3D</p>
           <h1 class="text-2xl font-semibold tracking-tight leading-tight mt-1">
             Design your<br />living space
           </h1>
         </header>
+
+        <!-- Units toggle (Imperial / Metric) -->
+        <div class="rounded-2xl p-1 bg-white/5 border border-white/10 grid grid-cols-2 gap-1 text-xs">
+          <button
+            id="unit-imperial"
+            type="button"
+            data-unit="inch"
+            class="unit-toggle rounded-xl py-2 font-medium text-white/70 transition"
+          >
+            Imperial
+          </button>
+          <button
+            id="unit-metric"
+            type="button"
+            data-unit="m"
+            class="unit-toggle rounded-xl py-2 font-medium text-white/70 transition"
+          >
+            Metric
+          </button>
+        </div>
 
         <!-- Context menu for selected item -->
         <div id="context-menu" style="display: none;">

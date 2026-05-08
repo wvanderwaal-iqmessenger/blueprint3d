@@ -43,6 +43,17 @@ export const Controller = function (three: any, model: any, camera: any, element
     setGroundPlane();
   }
 
+  // Reused per-frame allocations for raycasting; allocating these on every
+  // mouse move (which fires dozens of times per second) caused noticeable GC
+  // pressure and stutter.
+  const _raycaster = new THREE.Raycaster();
+  const _rayDir = new THREE.Vector3();
+  const _rayOrigin = new THREE.Vector3();
+
+  // Coalesce mouse-driven work to once per animation frame instead of running
+  // it for every native mousemove event.
+  let _pendingMouseFrame = 0;
+
   function itemLoaded(item: any) {
     if (!item.position_set) {
       scope.setSelectedObject(item);
@@ -57,7 +68,7 @@ export const Controller = function (three: any, model: any, camera: any, element
 
   function clickPressed(vec2?: THREE.Vector2) {
     vec2 = vec2 || mouse;
-    const intersection = scope.itemIntersection(mouse, selectedObject);
+    const intersection = scope.itemIntersection(vec2, selectedObject);
     if (intersection) {
       selectedObject.clickPressed(intersection);
     }
@@ -65,7 +76,7 @@ export const Controller = function (three: any, model: any, camera: any, element
 
   function clickDragged(vec2?: THREE.Vector2) {
     vec2 = vec2 || mouse;
-    const intersection = scope.itemIntersection(mouse, selectedObject);
+    const intersection = scope.itemIntersection(vec2, selectedObject);
     if (intersection) {
       if (scope.isRotating()) {
         selectedObject.rotate(intersection);
@@ -123,23 +134,29 @@ export const Controller = function (three: any, model: any, camera: any, element
       mouse.x = event.clientX;
       mouse.y = event.clientY;
 
-      if (!mouseDown) {
-        updateIntersections();
-      }
+      if (_pendingMouseFrame) return;
+      _pendingMouseFrame = requestAnimationFrame(() => {
+        _pendingMouseFrame = 0;
+        if (!scope.enabled) return;
 
-      switch (state) {
-        case states.UNSELECTED:
-        case states.SELECTED:
-          updateMouseover();
-          break;
-        case states.DRAGGING:
-        case states.ROTATING:
-        case states.ROTATING_FREE:
-          clickDragged();
-          hud.update();
-          scope.needsUpdate = true;
-          break;
-      }
+        if (!mouseDown) {
+          updateIntersections();
+        }
+
+        switch (state) {
+          case states.UNSELECTED:
+          case states.SELECTED:
+            updateMouseover();
+            break;
+          case states.DRAGGING:
+          case states.ROTATING:
+          case states.ROTATING_FREE:
+            clickDragged();
+            hud.update();
+            scope.needsUpdate = true;
+            break;
+        }
+      });
     }
   }
 
@@ -297,13 +314,14 @@ export const Controller = function (three: any, model: any, camera: any, element
 
   this.itemIntersection = function (vec2: THREE.Vector2, item: any) {
     const customIntersections = item.customIntersectionPlanes();
-    let intersections;
     if (customIntersections && customIntersections.length > 0) {
-      intersections = this.getIntersections(vec2, customIntersections, true);
-    } else {
-      intersections = this.getIntersections(vec2, plane);
+      // Try wall planes first; if cursor isn't over a wall, fall back to ground plane
+      const wallHits = this.getIntersections(vec2, customIntersections, true);
+      if (wallHits.length > 0) return wallHits[0];
     }
-    return intersections.length > 0 ? intersections[0] : null;
+    // Ground plane fallback
+    const groundHits = this.getIntersections(vec2, plane);
+    return groundHits.length > 0 ? groundHits[0] : null;
   };
 
   this.getIntersections = function (
@@ -314,21 +332,24 @@ export const Controller = function (three: any, model: any, camera: any, element
     recursive?: boolean,
     linePrecision?: number
   ) {
-    const vector = mouseToVec3(vec2);
     onlyVisible = onlyVisible || false;
     filterByNormals = filterByNormals || false;
     recursive = recursive || false;
     linePrecision = linePrecision || 20;
 
-    const direction = vector.sub(camera.position).normalize();
-    const raycaster = new THREE.Raycaster(camera.position, direction);
-    (raycaster as any).linePrecision = linePrecision;
+    // Build a ray without allocating new Vector3s / Raycasters per call.
+    const normVec2 = normalizeVector2(vec2);
+    _rayDir.set(normVec2.x, normVec2.y, 0.5).unproject(camera).sub(camera.position).normalize();
+    _rayOrigin.copy(camera.position);
+    _raycaster.set(_rayOrigin, _rayDir);
+    // Modern three.js uses params.Line.threshold instead of linePrecision.
+    _raycaster.params.Line.threshold = linePrecision;
 
     let intersections: THREE.Intersection[];
     if (Array.isArray(objects)) {
-      intersections = raycaster.intersectObjects(objects, recursive);
+      intersections = _raycaster.intersectObjects(objects, recursive);
     } else {
-      intersections = raycaster.intersectObject(objects, recursive);
+      intersections = _raycaster.intersectObject(objects, recursive);
     }
 
     if (onlyVisible) {
@@ -337,7 +358,7 @@ export const Controller = function (three: any, model: any, camera: any, element
 
     if (filterByNormals) {
       intersections = Utils.removeIf(intersections, (i: any) => {
-        return i.face.normal.dot(direction) > 0;
+        return i.face.normal.dot(_rayDir) > 0;
       });
     }
 

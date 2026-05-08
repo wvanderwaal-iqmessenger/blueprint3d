@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import Stats from 'stats.js';
 import { EventEmitter } from '../core/event-emitter';
 import { Controls } from './controls';
 import { Controller } from './controller';
@@ -32,6 +33,7 @@ export class Main {
   private mouseOver = false;
   private hasClicked = false;
   private options: any;
+  private stats!: Stats;
 
   constructor(private model: any, elementSelector: string, canvasElement: string, opts: any) {
     this.element = document.querySelector(elementSelector) as HTMLElement;
@@ -55,11 +57,16 @@ export class Main {
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
-      preserveDrawingBuffer: true,
+      // preserveDrawingBuffer disables important driver optimizations.
+      // We re-render on demand inside dataUrl() instead.
+      powerPreference: 'high-performance',
     });
+    // Cap pixel ratio to 2 to avoid rendering 9x the pixels on hi-DPI displays.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.autoClear = false;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // PCFShadowMap is roughly 2-3x cheaper than PCFSoftShadowMap with a 1024^2 map.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     new Skybox(this.scene.getScene());
 
@@ -71,6 +78,19 @@ export class Main {
     );
 
     this.element.appendChild(this.renderer.domElement);
+
+    // Stats overlay (FPS + MS panels) anchored to top-right of the viewport.
+    this.stats = new Stats();
+    this.stats.showPanel(0); // 0=FPS, start visible
+    // Add the MS panel too so the user can click to toggle between them.
+    Object.assign(this.stats.dom.style, {
+      position: 'absolute',
+      top: '0',
+      right: '0',
+      left: 'auto',
+    });
+    this.element.style.position = this.element.style.position || 'relative';
+    this.element.appendChild(this.stats.dom);
 
     this.updateWindowSize();
     if (this.options.resize) {
@@ -100,6 +120,12 @@ export class Main {
   }
 
   public dataUrl() {
+    // Render synchronously so the drawing buffer is populated before readback,
+    // since we no longer use preserveDrawingBuffer.
+    this.renderer.clear();
+    this.renderer.render(this.scene.getScene(), this.camera);
+    this.renderer.clearDepth();
+    this.renderer.render(this.hud.getScene(), this.camera);
     return this.renderer.domElement.toDataURL('image/png');
   }
 
@@ -128,6 +154,7 @@ export class Main {
   }
 
   private render() {
+    this.stats.begin();
     this.spin();
     if (this.shouldRender()) {
       this.renderer.clear();
@@ -136,11 +163,13 @@ export class Main {
       this.renderer.render(this.hud.getScene(), this.camera);
     }
     this.lastRender = Date.now();
+    this.stats.end();
   }
 
   private animate() {
-    const delay = 50;
-    setTimeout(() => requestAnimationFrame(() => this.animate()), delay);
+    // Drive the loop directly off rAF so the browser can pace us at the
+    // display refresh rate. The previous setTimeout(50) capped us at ~20 FPS.
+    requestAnimationFrame(() => this.animate());
     this.render();
   }
 

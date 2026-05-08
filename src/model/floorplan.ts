@@ -76,16 +76,44 @@ export class Floorplan {
     Utils.removeValue(this.corners, corner);
   }
 
+  /**
+   * Merge corner `b` into corner `a`: every wall attached to `b` is reassigned
+   * to use `a` instead. Self-loops and duplicate walls are removed.
+   */
   public mergeCorners(a: Corner, b: Corner) {
-    // reassign wall endpoints from b to a
+    if (a === b) return;
+
+    // Reassign walls that START at b → start at a
     b.wallStartsArray().slice().forEach(wall => {
-      wall.getStart(); // just reference
-      // manually update: find the walls that start at b and make them start at a
+      if (wall.getEnd() === a || wall.getEnd() === b) {
+        wall.remove();
+        return;
+      }
+      // Drop duplicate (a already has a wall to wall.getEnd())
+      if (a.wallToOrFrom(wall.getEnd())) {
+        wall.remove();
+        return;
+      }
+      wall.setStart(a);
     });
-    // Simple merge: move b's walls to a
-    a.x = (a.x + b.x) / 2;
-    a.y = (a.y + b.y) / 2;
+
+    // Reassign walls that END at b → end at a
+    b.wallEndsArray().slice().forEach(wall => {
+      if (wall.getStart() === a || wall.getStart() === b) {
+        wall.remove();
+        return;
+      }
+      if (a.wallToOrFrom(wall.getStart())) {
+        wall.remove();
+        return;
+      }
+      wall.setEnd(a);
+    });
+
+    // Remove b from the corner list (also detaches from any remaining walls)
     Utils.removeValue(this.corners, b);
+    b.remove();
+    this.update();
   }
 
   public getWalls(): Wall[] { return this.walls; }

@@ -228,8 +228,9 @@ export class LegacyJSONLoader {
       geometry.computeVertexNormals();
     }
 
-    // Apply model scale if present (Three.js JSON format stores a scale factor)
-    const scale = json.scale ?? 1;
+    // Apply model scale if present.
+    // The old THREE.JSONLoader used 1/scale (scale was a divisor, not a multiplier).
+    const scale = json.scale !== undefined ? (1.0 / json.scale) : 1.0;
     if (scale !== 1) {
       geometry.scale(scale, scale, scale);
     }

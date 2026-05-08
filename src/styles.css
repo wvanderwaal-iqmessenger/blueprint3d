@@ -124,7 +124,7 @@ body {
 #add-items {
   display: none;
   overflow-y: auto;
-  padding: 6rem 2rem 2rem 24rem;
+  padding: 6rem 2rem 4rem 24rem;
 }
 
 @media (max-width: 900px) {
@@ -149,6 +149,18 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Sidebar — ensure it never overflows the viewport */
+aside.sidebar {
+  position: fixed;
+  top: 6rem;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  max-height: calc(100vh - 6rem - 1.5rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Sidebar nav active state (driven by example.js adding `.active`) */
 .nav-sidebar li.active > a {
   background: color-mix(in oklab, white 22%, transparent);
@@ -160,6 +172,24 @@ body {
   background: var(--color-accent) !important;
   border-color: transparent !important;
   color: white !important;
+}
+
+/* Active unit toggle */
+.unit-toggle.is-active {
+  background: var(--color-accent);
+  color: white;
+  box-shadow: 0 6px 16px -8px var(--color-accent-soft);
+}
+
+/* Floorplanner canvas — keep crisp under devicePixelRatio scaling */
+#floorplanner-canvas {
+  cursor: crosshair;
+}
+#floorplanner-canvas.mode-move {
+  cursor: grab;
+}
+#floorplanner-canvas.mode-delete {
+  cursor: not-allowed;
 }
 
 /* File input button wrapper */

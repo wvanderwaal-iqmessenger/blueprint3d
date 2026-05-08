@@ -69,6 +69,11 @@ export class Wall {
   public fireMoved() { this.moved_callbacks.fire(); }
   public fireAction() { this.action_callbacks.fire(); }
 
+  public fireRedraw() {
+    if (this.frontEdge) this.frontEdge.redrawCallbacks.fire();
+    if (this.backEdge) this.backEdge.redrawCallbacks.fire();
+  }
+
   public remove() {
     this.start.detachWall(this);
     this.end.detachWall(this);
@@ -77,6 +82,22 @@ export class Wall {
 
   public getStart(): Corner { return this.start; }
   public getEnd(): Corner { return this.end; }
+
+  /** Reassign this wall's start corner. Detaches from the old corner and attaches to the new one. */
+  public setStart(corner: Corner) {
+    this.start.detachWall(this);
+    this.start = corner;
+    corner.attachStart(this);
+    this.moved_callbacks.fire();
+  }
+
+  /** Reassign this wall's end corner. Detaches from the old corner and attaches to the new one. */
+  public setEnd(corner: Corner) {
+    this.end.detachWall(this);
+    this.end = corner;
+    corner.attachEnd(this);
+    this.moved_callbacks.fire();
+  }
 
   public getStartX(): number { return this.start.x; }
   public getEndX(): number { return this.end.x; }

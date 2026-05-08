@@ -13,7 +13,12 @@ export abstract class InWallItem extends WallItem {
     this.addToWall = true;
   }
 
+  /**
+   * Slight negative offset from interior surface so closestWallEdge()
+   * always resolves to the same (interior) half-edge after save/reload.
+   */
   public getWallOffset(): number {
     return this.currentWallEdge ? -this.currentWallEdge.offset + 0.5 : 0;
   }
 }
+

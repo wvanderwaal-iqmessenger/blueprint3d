@@ -318,8 +318,7 @@ var SideMenu = function(blueprint3d, floorplanControls, modalEffects) {
 
   function handleWindowResize() {
     $(".sidebar").height(window.innerHeight);
-    $("#add-items").height(window.innerHeight);
-
+    // #add-items is sized by CSS (position: absolute; inset: 0) — no JS needed.
   };
 
   // TODO: this doesn't really belong here
@@ -434,9 +433,18 @@ var ViewerFloorplanner = function(blueprint3d) {
 
       if (mode == BP3D.Floorplanner.floorplannerModes.DRAW) {
         $("#draw-walls-hint").show();
+        $("#draw-hud").show();
         scope.handleWindowResize();
       } else {
         $("#draw-walls-hint").hide();
+        $("#draw-hud").hide();
+      }
+      // Cursor affordance
+      var canvas = document.getElementById('floorplanner-canvas');
+      if (canvas) {
+        canvas.classList.remove('mode-move', 'mode-delete');
+        if (mode === BP3D.Floorplanner.floorplannerModes.MOVE) canvas.classList.add('mode-move');
+        if (mode === BP3D.Floorplanner.floorplannerModes.DELETE) canvas.classList.add('mode-delete');
       }
     });
 
@@ -450,6 +458,78 @@ var ViewerFloorplanner = function(blueprint3d) {
 
     $(remove).click(function(){
       scope.floorplanner.setMode(BP3D.Floorplanner.floorplannerModes.DELETE);
+    });
+
+    // ----- Drawing assist HUD -----
+    var $lengthInput = $('#draw-length-input');
+    var $angleInput = $('#draw-angle-input');
+    var $live = $('#draw-live-readout');
+    var $place = $('#draw-place-btn');
+
+    function commitLengthInput() {
+      var raw = $lengthInput.val();
+      if (raw === '' || raw == null) {
+        scope.floorplanner.setConstraintLengthCm(null);
+        return;
+      }
+      var cm = BP3D.Dimensioning.measureToCm(String(raw));
+      if (cm != null && cm > 0) scope.floorplanner.setConstraintLengthCm(cm);
+    }
+    function commitAngleInput() {
+      var raw = $angleInput.val();
+      if (raw === '' || raw == null) {
+        scope.floorplanner.setConstraintAngleRad(null);
+        return;
+      }
+      var deg = parseFloat(raw);
+      if (!isNaN(deg)) scope.floorplanner.setConstraintAngleRad(deg * Math.PI / 180);
+    }
+
+    $lengthInput.on('input', commitLengthInput);
+    $angleInput.on('input', commitAngleInput);
+    $lengthInput.on('keydown', function(e) {
+      if (e.key === 'Enter') {
+        commitLengthInput();
+        scope.floorplanner.commitNextCorner();
+        $lengthInput.val('');
+        $angleInput.val('');
+      }
+    });
+    $angleInput.on('keydown', function(e) {
+      if (e.key === 'Enter') {
+        commitAngleInput();
+        scope.floorplanner.commitNextCorner();
+        $lengthInput.val('');
+        $angleInput.val('');
+      }
+    });
+    $place.on('click', function() {
+      commitLengthInput();
+      commitAngleInput();
+      scope.floorplanner.commitNextCorner();
+      $lengthInput.val('');
+      $angleInput.val('');
+    });
+
+    $('#snap-grid-toggle').on('change', function() {
+      scope.floorplanner.setSnapToGrid(this.checked);
+    });
+    $('#snap-angle-toggle').on('change', function() {
+      scope.floorplanner.setAngleSnap(this.checked);
+    });
+    $('#grid-size-select').on('change', function() {
+      scope.floorplanner.setGridSizeCm(parseFloat(this.value));
+    });
+
+    // Live readout from the floorplanner
+    scope.floorplanner.drawStateCallbacks.add(function(state) {
+      if (!state.active || state.lengthCm <= 0) {
+        $live.text('—');
+        return;
+      }
+      var len = BP3D.Dimensioning.cmToMeasure(state.lengthCm);
+      var angle = Math.round(state.angleDeg < 0 ? state.angleDeg + 360 : state.angleDeg);
+      $live.text(len + '  ·  ' + angle + '°' + (state.willClose ? '  · closes' : ''));
     });
   }
 
@@ -497,6 +577,23 @@ var mainControls = function(blueprint3d) {
     $("#new").click(newDesign);
     $("#loadFile").change(loadDesign);
     $("#saveFile").click(saveDesign);
+
+    // ----- Units toggle (Imperial / Metric) -----
+    function applyUnit(unit) {
+      BP3D.Configuration.setValue(BP3D.configDimUnit, unit);
+      $('.unit-toggle').removeClass('is-active');
+      $('.unit-toggle[data-unit="' + unit + '"]').addClass('is-active');
+      // Persist user preference
+      try { localStorage.setItem('bp3d:unit', unit); } catch (e) {}
+      // Repaint floorplanner labels and 3D HUD measurements
+      if (blueprint3d.floorplanner) blueprint3d.floorplanner.refresh();
+    }
+    $('.unit-toggle').on('click', function() {
+      applyUnit($(this).attr('data-unit'));
+    });
+    var savedUnit = null;
+    try { savedUnit = localStorage.getItem('bp3d:unit'); } catch (e) {}
+    applyUnit(savedUnit || BP3D.dimInch);
   }
 
   init();

@@ -68,22 +68,23 @@ export class Edge {
     this.updateVisibility();
   }
 
+  // Reused scratch vectors so updateVisibility (fired on every camera move,
+  // for every wall edge) doesn't allocate per call.
+  private _normal = new THREE.Vector3();
+  private _focus = new THREE.Vector3();
+  private _camDir = new THREE.Vector3();
+
   private updateVisibility() {
     const start = this.edge.interiorStart();
     const end = this.edge.interiorEnd();
     const x = end.x - start.x;
     const y = end.y - start.y;
-    const normal = new THREE.Vector3(-y, 0, x).normalize();
+    this._normal.set(-y, 0, x).normalize();
 
-    const position = this.controls.object.position.clone();
-    const focus = new THREE.Vector3(
-      (start.x + end.x) / 2.0,
-      0,
-      (start.y + end.y) / 2.0
-    );
-    const direction = position.sub(focus).normalize();
+    this._focus.set((start.x + end.x) / 2.0, 0, (start.y + end.y) / 2.0);
+    this._camDir.copy(this.controls.object.position).sub(this._focus).normalize();
 
-    const dot = normal.dot(direction);
+    const dot = this._normal.dot(this._camDir);
     this.visible = dot >= 0;
 
     this.planes.forEach((plane) => { plane.visible = this.visible; });
@@ -181,11 +182,12 @@ export class Edge {
       const min = halfSize.clone().multiplyScalar(-1).add(pos);
       const max = halfSize.clone().add(pos);
 
+      // Hole must be clockwise (opposite winding to outer shape) for EarCut
       shape.holes.push(new THREE.Path([
-        new THREE.Vector2(min.x, min.y),
-        new THREE.Vector2(max.x, min.y),
-        new THREE.Vector2(max.x, max.y),
         new THREE.Vector2(min.x, max.y),
+        new THREE.Vector2(max.x, max.y),
+        new THREE.Vector2(max.x, min.y),
+        new THREE.Vector2(min.x, min.y),
       ]));
     });
 
