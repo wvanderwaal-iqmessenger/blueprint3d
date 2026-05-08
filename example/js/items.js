@@ -153,10 +153,18 @@ $(document).ready(function() {
       "type" : "2"
     }
    /*     
+   // Legacy Three.js JSON format (.js):
    {
       "name" : "",
       "image" : "",
-      "model" : "",
+      "model" : "models/js/my_model.js",
+      "type" : "1"
+    },
+   // GLTF/GLB format (.glb or .gltf):
+   {
+      "name" : "",
+      "image" : "models/thumbnails/my_thumbnail.png",
+      "model" : "models/my_model.glb",
       "type" : "1"
     }, 
     */

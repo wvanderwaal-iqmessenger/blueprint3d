@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EventEmitter } from '../core/event-emitter';
 import { Utils } from '../core/utils';
 import { LegacyJSONLoader } from '../three/legacy-json-loader';
@@ -18,6 +20,7 @@ export class Scene {
   private items: IItem[] = [];
   public needsUpdate = false;
   private loader: LegacyJSONLoader;
+  private gltfLoader: GLTFLoader;
 
   public itemLoadingCallbacks = new EventEmitter<(item?: IItem) => void>();
   public itemLoadedCallbacks = new EventEmitter<(item: IItem) => void>();
@@ -26,6 +29,7 @@ export class Scene {
   constructor(private model: Model, private textureDir: string) {
     this.scene = new THREE.Scene();
     this.loader = new LegacyJSONLoader();
+    this.gltfLoader = new GLTFLoader();
   }
 
   public add(mesh: THREE.Object3D) { this.scene.add(mesh); }
@@ -87,6 +91,47 @@ export class Scene {
     };
 
     this.itemLoadingCallbacks.fire();
-    this.loader.load(fileName, loaderCallback);
+
+    const isGltf = /\.(glb|gltf)$/i.test(fileName);
+
+    if (isGltf) {
+      this.gltfLoader.load(
+        fileName,
+        (gltf) => {
+          const geometry = new THREE.BufferGeometry();
+          const materials: THREE.Material[] = [];
+          const meshes: THREE.Mesh[] = [];
+          gltf.scene.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) meshes.push(child as THREE.Mesh);
+          });
+
+          if (meshes.length === 1) {
+            const mesh = meshes[0];
+            mesh.updateWorldMatrix(true, false);
+            geometry.copy(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+            const mat = mesh.material;
+            if (Array.isArray(mat)) materials.push(...mat);
+            else materials.push(mat);
+          } else {
+            const geos: THREE.BufferGeometry[] = [];
+            for (const mesh of meshes) {
+              mesh.updateWorldMatrix(true, false);
+              geos.push(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+              const mat = mesh.material;
+              if (Array.isArray(mat)) materials.push(...mat);
+              else materials.push(mat);
+            }
+            const merged = mergeGeometries(geos, true);
+            geometry.copy(merged ?? geos[0]);
+          }
+
+          loaderCallback(geometry, materials.length ? materials : [new THREE.MeshStandardMaterial()]);
+        },
+        undefined,
+        (err) => console.error('Scene: failed to load GLTF', fileName, err)
+      );
+    } else {
+      this.loader.load(fileName, loaderCallback);
+    }
   }
 }
